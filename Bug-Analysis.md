@@ -194,6 +194,90 @@ if gateway is None:
 
 ---
 
+### Bug 5: "draining" 不在 transient error markers
+
+**位置**: `backend/app/services/openclaw/constants.py:124-143`
+
+**代码**:
+```python
+_TRANSIENT_GATEWAY_ERROR_MARKERS = (
+    "connect call failed",
+    "connection refused",
+    "service restart",  # ← 有这个
+    # "draining",       # 🐛 缺失！
+    ...
+)
+```
+
+**问题**:
+- Gateway 在 draining/restart 时返回错误: "Gateway is draining for restart"
+- 该错误不被识别为 transient error
+- 导致 provisioning 失败，`wake_attempts++`
+- Agent 达到 max attempts 后被标记为 offline
+
+**故障场景**:
+1. Mission Control 创建 Agent，状态为 "updating"
+2. Gateway 同时触发 draining (config.patch)
+3. Provisioning 失败: "Gateway is draining for restart"
+4. 错误被当作 permanent error，wake_attempts 增加到 3
+5. Agent 被标记为 offline，从未真正启动
+
+**建议修复**:
+```python
+_TRANSIENT_GATEWAY_ERROR_MARKERS = (
+    ...
+    "draining",
+    "drain",  # 更广泛的匹配
+)
+```
+
+---
+
+### Bug 6: `lifecycle_orchestrator` 不使用 retry 机制
+
+**位置**: `backend/app/services/openclaw/lifecycle_orchestrator.py:90-145`
+
+**代码对比**:
+```python
+# coordination_service.py ✅ 使用 retry
+async def _with_retry(fn):
+    return await with_coordination_gateway_retry(fn)
+
+# lifecycle_orchestrator.py ❌ 没有使用 retry
+try:
+    await OpenClawGatewayProvisioner().apply_agent_lifecycle(...)
+except OpenClawGatewayError as exc:
+    # 直接失败，没有 retry
+    mark_provision_complete(locked, status="offline")
+```
+
+**问题**:
+- Transient errors（如 draining）应该重试
+- `coordination_service.py` 使用 `with_coordination_gateway_retry`
+- `lifecycle_orchestrator.py` 没有使用任何 retry 机制
+- 导致 transient errors 直接失败
+
+**建议修复**:
+```python
+# Option A: Wrap provisioning with retry
+async def _provision():
+    await OpenClawGatewayProvisioner().apply_agent_lifecycle(...)
+
+await with_coordination_gateway_retry(_provision)
+
+# Option B: Reset wake_attempts on transient errors
+except OpenClawGatewayError as exc:
+    if _is_transient_gateway_error(exc):
+        locked.wake_attempts = max(0, locked.wake_attempts - 1)
+    mark_provision_complete(locked, status="offline")
+```
+
+**影响严重性**: 🔴 P0
+- 与 Bug 5 组合，导致 Agent 在 Gateway draining 时完全无法启动
+- 实际案例: Analyst-CodeReview 在 18:29 创建，18:30 Gateway draining，Agent 卡住 15 分钟
+
+---
+
 ## 🟡 P1 - 中等 Bug
 
 ### Bug 3: Heartbeat 模板中 API 端点可能误导
@@ -455,6 +539,8 @@ except (OSError, OpenClawGatewayError, ValueError):
 | 🔴 P0 | `run_lifecycle` 错误处理不完整 | Provisioning 失败后状态卡住 | `lifecycle_orchestrator.py:90-145` |
 | 🔴 P0 | Reconcile max_attempts 状态不一致 | provision_action 未清除 | `lifecycle_reconcile.py:82-98` |
 | 🔴 P0 | Gateway/Board 缺失时状态卡住 | Agent 无法恢复 | `lifecycle_reconcile.py:99-116` |
+| 🔴 P0 | "draining" 不在 transient markers | Gateway draining 时 Agent 启动失败 | `constants.py:124-143` |
+| 🔴 P0 | lifecycle_orchestrator 无 retry | Transient errors 直接失败 | `lifecycle_orchestrator.py:90-145` |
 | 🟡 P1 | Device Pairing 双重配置 | 配置遗漏导致连接失败 | `gateways.py` + Gateway 配置 |
 | 🟡 P1 | OFFLINE_AFTER 文档不一致 | 运维混淆 | `constants.py:20` |
 | 🟡 P1 | 任务分配通知静默丢弃 | 通知失败无日志 | `tasks.py:664-708` |
@@ -467,7 +553,7 @@ except (OSError, OpenClawGatewayError, ValueError):
 | 🟢 P2 | Queue Worker 无指数退避 | 日志洪水风险 | `queue_worker.py:133-140` |
 | 🟢 P2 | Heartbeat 缺少速率限制 | 资源耗尽风险 | `agent.py:705-730` |
 
-**总计**: 4 个 P0 + 7 个 P1 + 4 个 P2 = **15 个 Bug**
+**总计**: 6 个 P0 + 7 个 P1 + 4 个 P2 = **17 个 Bug**
 
 ---
 
