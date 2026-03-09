@@ -325,3 +325,229 @@ docker exec openclaw-mission-control-db-1 psql -U postgres -d mission_control -c
 - [ ] Agent HEARTBEAT.md 中 token 正确
 - [ ] Agent HEARTBEAT.md 中 API 端点格式正确
 - [ ] Agent workspace 路径无重复
+
+---
+
+## 6. AUTH_TOKEN 与数据库 Hash 不匹配
+
+### 症状
+- Agent session 日志显示所有 API 调用返回 401
+- `curl: (22) The requested URL returned error: 401`
+- `last_seen_at` 为 NULL，从未成功发送 heartbeat
+
+### 根本原因
+TOOLS.md 中的 `AUTH_TOKEN` 与数据库中的 `agent_token_hash` 不匹配。
+
+**可能原因：**
+1. Provisioning 时 token 生成/同步失败
+2. 手动修改了 TOOLS.md 但未更新数据库
+3. 数据库 hash 被覆盖
+
+### 解决方案
+
+**方法 A: 重新生成 token 并同步**
+
+```bash
+# 1. 在后端容器中生成新 token 和 hash
+docker exec openclaw-mission-control-backend-1 python -c "
+from app.core.agent_tokens import hash_agent_token
+import secrets
+token = secrets.token_urlsafe(32)
+stored_hash = hash_agent_token(token)
+print(fTOKEN={token})
+print(fHASH={stored_hash})
+"
+
+# 2. 更新数据库
+docker exec openclaw-mission-control-db-1 psql -U postgres -d mission_control -c \
+  "UPDATE agents SET agent_token_hash = HASH_FROM_STEP_1 WHERE id = AGENT_ID;"
+
+# 3. 更新 TOOLS.md
+sed -i s/AUTH_TOKEN=old_token/AUTH_TOKEN=new_token/ /root/.openclaw/workspace-AGENT_ID/TOOLS.md
+
+# 4. 清除 provision 状态（如果卡在 updating）
+docker exec openclaw-mission-control-db-1 psql -U postgres -d mission_control -c \
+  "UPDATE agents SET status = online, provision_action = NULL, provision_requested_at = NULL WHERE id = AGENT_ID;"
+```
+
+**方法 B: 验证 token 是否匹配**
+
+```python
+import hashlib
+import base64
+import hmac
+
+def verify_agent_token(token: str, stored_hash: str) -> bool:
+    try:
+        algorithm, iterations_str, salt_b64, digest_b64 = stored_hash.split("$")
+    except ValueError:
+        return False
+    if algorithm != "pbkdf2_sha256":
+        return False
+    iterations = int(iterations_str)
+    
+    def _b64decode(value: str) -> bytes:
+        padding = "=" * (-len(value) % 4)
+        return base64.urlsafe_b64decode(value + padding)
+    
+    salt = _b64decode(salt_b64)
+    expected_digest = _b64decode(digest_b64)
+    candidate = hashlib.pbkdf2_hmac(
+        "sha256",
+        token.encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return hmac.compare_digest(candidate, expected_digest)
+```
+
+---
+
+## 7. 状态卡在 "updating" 或 "provisioning"
+
+### 症状
+- Agent 状态长期显示 `updating` 或 `provisioning`
+- `provision_action` 和 `provision_requested_at` 字段有值
+
+### 根本原因
+Provisioning 请求了但没有完成，`mark_provision_complete()` 未被调用。
+
+### 解决方案
+
+```sql
+-- 检查 provision 状态
+SELECT id, name, status, provision_action, provision_requested_at 
+FROM agents WHERE id = AGENT_ID;
+
+-- 清除 provision 状态
+UPDATE agents 
+SET status = online, 
+    provision_action = NULL, 
+    provision_requested_at = NULL 
+WHERE id = AGENT_ID;
+```
+
+---
+
+## 8. Gateway Heartbeat ≠ Mission Control Heartbeat
+
+### 关键理解
+
+**Gateway Heartbeat** 和 **Mission Control Heartbeat** 是两个不同的机制：
+
+| 机制 | Gateway Heartbeat | Mission Control Heartbeat |
+|------|-------------------|---------------------------|
+| **目的** | 触发 Agent 对话轮次 | 更新 `last_seen_at` |
+| **配置** | `agents.list[].heartbeat.every` | 检查 `OFFLINE_AFTER = 10分钟` |
+| **执行方式** | Gateway 定时器发送消息 | Agent 调用 `POST /api/v1/agent/heartbeat` |
+| **日志** | `heartbeat: started` | 无（Agent 自行调用 API） |
+
+### 工作流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Gateway Heartbeat 流程                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Gateway 定时器 (每 10 分钟)                                     │
+│       │                                                         │
+│       ▼                                                         │
+│  发送消息到 Agent session                                        │
+│       │                                                         │
+│       ▼                                                         │
+│  Agent 读取 HEARTBEAT.md                                        │
+│       │                                                         │
+│       ▼                                                         │
+│  Agent 执行 curl 调用 Mission Control API ←── 这步可能失败！     │
+│       │                                                         │
+│       ▼                                                         │
+│  Mission Control 更新 last_seen_at                              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 常见问题
+
+**问题**: Gateway heartbeat 日志只显示 `heartbeat: started`，没有后续执行日志
+
+**原因**: 
+1. Agent 没有收到 heartbeat 消息
+2. Agent 收到了但没有执行 HEARTBEAT.md 中的 curl 命令
+3. curl 执行失败（网络、token 错误等）
+
+**调试方法**:
+
+```bash
+# 检查 Agent session 日志
+tail -50 /root/.openclaw/agents/AGENT_ID/sessions/*.jsonl | jq -c "{ts:.timestamp, role:.message.role}"
+
+# 查找 401 错误
+grep "401" /root/.openclaw/agents/AGENT_ID/sessions/*.jsonl
+
+# 手动测试 heartbeat API
+curl -s -X POST "http://SERVER_IP:8000/api/v1/agent/heartbeat" \
+  -H "X-Agent-Token: YOUR_TOKEN"
+```
+
+### 状态计算逻辑 (Mission Control)
+
+```python
+OFFLINE_AFTER = timedelta(minutes=10)
+
+def with_computed_status(agent, now):
+    if agent.status in {"deleting", "updating"}:
+        return agent  # 不改变这些状态
+    if agent.last_seen_at is None:
+        agent.status = "provisioning"
+    elif now - agent.last_seen_at > OFFLINE_AFTER:
+        agent.status = "offline"
+    return agent
+```
+
+---
+
+## 9. 配置文件生成机制
+
+### auth-profiles.json 来源
+
+```
+Gateway 端 (运行时自动):
+loadAuthProfileStoreForAgent(agentDir)
+    │
+    ├── 检查 {agentDir}/auth-profiles.json 是否存在
+    │   └── 存在 → 直接使用
+    │
+    └── 不存在 → 从 main agent 复制
+            saveJsonFile(authPath, mainStore)
+            log("inherited auth-profiles from main agent")
+```
+
+### models.json 来源
+
+```
+Gateway 端 (运行时按需):
+ensureOpenClawModelsJson()
+    │
+    ├── 读取 auth-profiles.json 获取 API keys
+    │
+    ├── resolveImplicitProviders()
+    │
+    └── 生成 models.json (provider 配置 + models 列表)
+```
+
+### 模板文件来源 (Mission Control provisioning)
+
+```
+Mission Control:
+OpenClawGatewayProvisioner.apply_agent_lifecycle()
+    │
+    ├── agents.create (RPC) → 创建 agent 目录
+    │
+    └── agents.files.set (RPC) → 写入模板文件:
+        - AGENTS.md, SOUL.md, TOOLS.md
+        - IDENTITY.md, USER.md, HEARTBEAT.md, MEMORY.md
+```
+
+---
+
+> 最后更新: 2026-03-10
