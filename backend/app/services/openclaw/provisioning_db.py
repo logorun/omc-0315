@@ -12,7 +12,7 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 from uuid import UUID, uuid4
 
@@ -867,7 +867,17 @@ class AgentLifecycleService(OpenClawDBService):
     @classmethod
     def with_computed_status(cls, agent: Agent) -> Agent:
         now = utcnow()
+        # Bug 1 Fix: Check for stale updating/deleting states
+        # If provision has been pending for more than 5 minutes, reset to offline
+        PROVISION_TIMEOUT = timedelta(minutes=5)
         if agent.status in {"deleting", "updating"}:
+            if agent.provision_requested_at is not None:
+                if now - agent.provision_requested_at > PROVISION_TIMEOUT:
+                    # Provision has timed out, reset to offline
+                    agent.status = "offline"
+                    agent.provision_action = None
+                    agent.provision_requested_at = None
+                    agent.last_provision_error = "Provisioning timed out after 5 minutes"
             return agent
         if agent.last_seen_at is None:
             agent.status = "provisioning"

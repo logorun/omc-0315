@@ -550,4 +550,53 @@ OpenClawGatewayProvisioner.apply_agent_lifecycle()
 
 ---
 
+## 10. P0 Bug 修复 (2026-03-10)
+
+### 修复的状态机问题
+
+以下 Bug 已修复，确保 Agent 状态不会卡住：
+
+| Bug | 文件 | 问题 | 修复 |
+|-----|------|------|------|
+| Bug 1 | `provisioning_db.py:868-884` | `updating`/`deleting` 状态不检查超时 | 添加 5 分钟超时检测 |
+| Bug 2 | `lifecycle_orchestrator.py:90-145` | Gateway 错误时不恢复状态 | 异常时调用 `mark_provision_complete` |
+| Bug 2.5 | `lifecycle_reconcile.py:82-98` | max_attempts 时不清理 provision 字段 | 清理 `provision_action`/`provision_requested_at` |
+| Bug 2.6 | `lifecycle_reconcile.py:99-116` | Gateway/Board 缺失时状态卡住 | 标记为 offline 并设置错误信息 |
+
+### 修复后的状态机
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Agent 状态转换                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  [任何状态]                                                      │
+│       │                                                         │
+│       ├── provision_requested ──→ updating                      │
+│       │         │                                               │
+│       │         ├── 成功 ──→ online                             │
+│       │         │                                               │
+│       │         ├── 失败 ──→ offline (Bug 2 修复)               │
+│       │         │                                               │
+│       │         └── 超时 5 分钟 ──→ offline (Bug 1 修复)        │
+│       │                                                         │
+│       ├── Gateway 缺失 ──→ offline (Bug 2.6 修复)               │
+│       │                                                         │
+│       ├── Board 缺失 ──→ offline (Bug 2.6 修复)                 │
+│       │                                                         │
+│       └── max_attempts 达到 ──→ offline (Bug 2.5 修复)          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 核心原则
+
+**任何异常路径都必须恢复 Agent 状态！**
+
+- `mark_provision_complete()` 必须在成功和失败时都被调用
+- `provision_action` 和 `provision_requested_at` 必须在状态恢复时清理
+- `last_provision_error` 应该记录具体的错误原因
+
+---
+
 > 最后更新: 2026-03-10

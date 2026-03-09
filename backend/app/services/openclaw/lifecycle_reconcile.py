@@ -81,6 +81,9 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
 
         if agent.wake_attempts >= MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN:
             agent.status = "offline"
+            # Bug 2.5 Fix: Clear provision fields to prevent stuck state
+            agent.provision_action = None
+            agent.provision_requested_at = None
             agent.checkin_deadline_at = None
             agent.last_provision_error = (
                 "Agent did not check in after wake; max wake attempts reached"
@@ -100,8 +103,17 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
 
         gateway = await Gateway.objects.by_id(agent.gateway_id).first(session)
         if gateway is None:
+            # Bug 2.6 Fix: Mark agent offline when gateway is deleted
+            agent.status = "offline"
+            agent.provision_action = None
+            agent.provision_requested_at = None
+            agent.checkin_deadline_at = None
+            agent.last_provision_error = "Gateway deleted or not found"
+            agent.updated_at = utcnow()
+            session.add(agent)
+            await session.commit()
             logger.warning(
-                "lifecycle.reconcile.skip_missing_gateway",
+                "lifecycle.reconcile.gateway_missing_marked_offline",
                 extra={"agent_id": str(agent.id), "gateway_id": str(agent.gateway_id)},
             )
             return
@@ -109,8 +121,17 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
         if agent.board_id is not None:
             board = await Board.objects.by_id(agent.board_id).first(session)
             if board is None:
+                # Bug 2.6 Fix: Mark agent offline when board is deleted
+                agent.status = "offline"
+                agent.provision_action = None
+                agent.provision_requested_at = None
+                agent.checkin_deadline_at = None
+                agent.last_provision_error = "Board deleted or not found"
+                agent.updated_at = utcnow()
+                session.add(agent)
+                await session.commit()
                 logger.warning(
-                    "lifecycle.reconcile.skip_missing_board",
+                    "lifecycle.reconcile.board_missing_marked_offline",
                     extra={"agent_id": str(agent.id), "board_id": str(agent.board_id)},
                 )
                 return
