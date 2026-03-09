@@ -88,3 +88,32 @@ When using LOCAL_AUTH_TOKEN, Mission Control looks for a user with `clerk_user_i
 
 *Last updated: 2026-03-09*
 *Author: Mush (OpenClaw Agent)*
+
+---
+
+## Remote Access Configuration
+
+When accessing Mission Control from a remote IP (not localhost), you must configure:
+
+### 1. Frontend API URL
+Edit `frontend/.env`:
+```
+NEXT_PUBLIC_API_URL=http://YOUR_SERVER_IP:8000
+```
+
+### 2. Backend CORS Origins
+Edit `backend/.env`:
+```
+CORS_ORIGINS=http://localhost:3000,http://YOUR_SERVER_IP:3000
+```
+
+### 3. Restart Services
+```bash
+mc-restart
+```
+
+**Note:** Both changes are required. Without CORS configuration, the browser will reject API calls from the frontend.
+
+---
+
+*Updated: 2026-03-09 - Added remote access config*
