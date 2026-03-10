@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 const MENTION_MAX_OPTIONS = 8;
-const MENTION_PATTERN = /(?:^|\s)@([A-Za-z0-9_-]{0,31})$/;
+const MENTION_PATTERN = /(?:^|\s)@([\w\u4e00-\u9fff_-]{0,31})$/;
 
 type MentionTarget = {
   start: number;
@@ -25,9 +25,9 @@ type BoardChatComposerProps = {
 const normalizeMentionHandle = (raw: string): string | null => {
   const trimmed = raw.trim().replace(/^@+/, "");
   if (!trimmed) return null;
-  const token = trimmed.split(/\s+/)[0]?.replace(/[^A-Za-z0-9_-]/g, "") ?? "";
+  const token = trimmed.split(/\s+/)[0]?.replace(/[^\w\u4e00-\u9fff_-]/g, "") ?? "";
   if (!token) return null;
-  if (!/^[A-Za-z]/.test(token)) return null;
+  if (!/^[A-Za-z\u4e00-\u9fff]/.test(token)) return null;
   return token.slice(0, 32).toLowerCase();
 };
 
