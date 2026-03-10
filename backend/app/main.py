@@ -558,6 +558,7 @@ api_v1.include_router(board_onboarding_router)
 api_v1.include_router(approvals_router)
 api_v1.include_router(task_custom_fields_router)
 api_v1.include_router(tags_router)
+api_v1.include_router(tasks_router)
 api_v1.include_router(users_router)
 app.include_router(api_v1)
 
