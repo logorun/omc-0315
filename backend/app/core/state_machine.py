@@ -27,6 +27,7 @@ class AgentStatus(str, Enum):
     """Valid agent status values with explicit state machine."""
 
     PROVISIONING = "provisioning"
+    UPDATING = "updating"
     ONLINE = "online"
     OFFLINE = "offline"
     ERROR = "error"
@@ -73,18 +74,26 @@ VALID_AGENT_TRANSITIONS: Final[dict[str, set[str]]] = {
         AgentStatus.ONLINE.value,
         AgentStatus.ERROR.value,
     },
+    AgentStatus.UPDATING.value: {
+        AgentStatus.ONLINE.value,
+        AgentStatus.ERROR.value,
+    },
     AgentStatus.ONLINE.value: {
         AgentStatus.OFFLINE.value,
+        AgentStatus.UPDATING.value,
         AgentStatus.ERROR.value,
         AgentStatus.DELETING.value,
     },
     AgentStatus.OFFLINE.value: {
         AgentStatus.ONLINE.value,
+        AgentStatus.UPDATING.value,
+        AgentStatus.PROVISIONING.value,
         AgentStatus.ERROR.value,
         AgentStatus.DELETING.value,
     },
     AgentStatus.ERROR.value: {
         AgentStatus.PROVISIONING.value,
+        AgentStatus.UPDATING.value,
         AgentStatus.ONLINE.value,
         AgentStatus.DELETING.value,
     },
