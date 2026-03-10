@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 const MENTION_MAX_OPTIONS = 8;
-const MENTION_PATTERN = /(?:^|\s)@([\w\u4e00-\u9fff](?:[\w\u4e00-\u9fff_-]*[\w\u4e00-\u9fff])?)$/;
+const MENTION_PATTERN = /(?:^|\s)@([\w\u4e00-\u9fff](?:[\w\u4e00-\u9fff_-]*[\w\u4e00-\u9fff])?)?$/;
 
 type MentionTarget = {
   start: number;

@@ -637,5 +637,54 @@ async def create_board_group_memory_for_board(
     return memory
 
 
+@group_router.post(
+    "/migrate-is-chat",
+    response_model=dict,
+    summary="One-time migration: fix is_chat field for legacy records",
+    description="Update is_chat field to TRUE for all records with 'chat' tag but is_chat=FALSE",
+)
+async def migrate_is_chat_field(
+    group_id: UUID,
+    session: AsyncSession = SESSION_DEP,
+    ctx: OrganizationContext = ORG_MEMBER_DEP,
+) -> dict[str, int]:
+    """Fix is_chat field for legacy board_group_memory records.
+    
+    This endpoint updates all records where:
+    - tags contains "chat" (tags @> '["chat"]')
+    - is_chat is FALSE
+    
+    This is a one-time migration to fix records created before the
+    is_chat field was automatically set from tags.
+    
+    Requires organization admin or owner role.
+    """
+    if not is_org_admin(ctx.member):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only organization admins can run this migration",
+        )
+    
+    await _require_group_access(session, group_id=group_id, ctx=ctx, write=True)
+    
+    from sqlalchemy import text
+    
+    result = await session.exec(
+        text("""
+            UPDATE board_group_memory
+            SET is_chat = TRUE
+            WHERE board_group_id = :group_id
+              AND is_chat = FALSE
+              AND tags::jsonb @> '["chat"]'::jsonb
+        """),
+        {"group_id": str(group_id)},
+    )
+    
+    updated_count = result.rowcount if hasattr(result, 'rowcount') else 0
+    await session.commit()
+    
+    return {"updated_records": updated_count}
+
+
 router.include_router(group_router)
 router.include_router(board_router)
