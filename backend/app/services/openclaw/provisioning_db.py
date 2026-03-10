@@ -889,20 +889,21 @@ class AgentLifecycleService(OpenClawDBService):
     @classmethod
     def with_computed_status(cls, agent: Agent) -> Agent:
         now = utcnow()
-        # Bug 1 Fix: Check for stale updating/deleting states
-        # If provision has been pending for more than 5 minutes, reset to offline
         PROVISION_TIMEOUT = timedelta(minutes=5)
         if agent.status in {"deleting", "updating"}:
             if agent.provision_requested_at is not None:
                 if now - agent.provision_requested_at > PROVISION_TIMEOUT:
-                    # Provision has timed out, reset to offline
                     agent.status = "offline"
                     agent.provision_action = None
                     agent.provision_requested_at = None
                     agent.last_provision_error = "Provisioning timed out after 5 minutes"
             return agent
         if agent.last_seen_at is None:
-            agent.status = "provisioning"
+            if agent.created_at is not None and now - agent.created_at > PROVISION_TIMEOUT:
+                agent.status = "offline"
+                agent.last_provision_error = "Agent never connected after 5 minutes"
+            else:
+                agent.status = "provisioning"
         elif now - agent.last_seen_at > OFFLINE_AFTER:
             agent.status = "offline"
         return agent
