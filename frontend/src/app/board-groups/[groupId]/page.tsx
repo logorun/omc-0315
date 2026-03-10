@@ -110,7 +110,7 @@ function GroupChatMessageCard({ message }: { message: BoardGroupMemoryRead }) {
         <p className="text-sm font-semibold text-slate-900">
           {message.source ?? "User"}
         </p>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-slate-400" suppressHydrationWarning>
           {formatTimestamp(message.created_at)}
         </span>
       </div>
@@ -1001,7 +1001,7 @@ export default function BoardGroupDetailPage() {
                               </p>
                               <ArrowUpRight className="h-4 w-4 text-slate-400 group-hover:text-blue-600" />
                             </Link>
-                            <p className="mt-1 text-xs text-slate-500">
+                            <p className="mt-1 text-xs text-slate-500" suppressHydrationWarning>
                               Updated {formatTimestamp(item.board.updated_at)}
                             </p>
                           </div>
@@ -1054,7 +1054,7 @@ export default function BoardGroupDetailPage() {
                                         {task.title}
                                       </p>
                                     </div>
-                                    <p className="text-xs text-slate-500">
+                                    <p className="text-xs text-slate-500" suppressHydrationWarning>
                                       {formatTimestamp(task.updated_at)}
                                     </p>
                                   </div>

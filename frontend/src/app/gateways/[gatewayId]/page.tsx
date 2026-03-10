@@ -263,7 +263,7 @@ export default function GatewayDetailPage() {
                       <p className="text-xs uppercase text-slate-400">
                         Created
                       </p>
-                      <p className="mt-1 text-sm font-medium text-slate-900">
+                      <p className="mt-1 text-sm font-medium text-slate-900" suppressHydrationWarning>
                         {formatTimestamp(gateway.created_at)}
                       </p>
                     </div>
@@ -271,7 +271,7 @@ export default function GatewayDetailPage() {
                       <p className="text-xs uppercase text-slate-400">
                         Updated
                       </p>
-                      <p className="mt-1 text-sm font-medium text-slate-900">
+                      <p className="mt-1 text-sm font-medium text-slate-900" suppressHydrationWarning>
                         {formatTimestamp(gateway.updated_at)}
                       </p>
                     </div>

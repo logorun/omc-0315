@@ -997,7 +997,7 @@ export default function DashboardPage() {
                             {item.board_name} · {item.confidence}% score
                           </span>
                         </span>
-                        <span className="shrink-0 text-xs text-slate-500">
+                        <span className="shrink-0 text-xs text-slate-500" suppressHydrationWarning>
                           {formatRelativeTimestamp(item.created_at)}
                         </span>
                       </Link>
@@ -1062,7 +1062,7 @@ export default function DashboardPage() {
                               <p className="truncate text-xs font-medium text-slate-700">
                                 {session.usage === DASH ? "Usage unavailable" : session.usage}
                               </p>
-                              <p className="text-[11px] text-slate-500">
+                              <p className="text-[11px] text-slate-500" suppressHydrationWarning>
                                 {session.lastSeenAt
                                   ? formatRelativeTimestamp(session.lastSeenAt)
                                   : "Activity unavailable"}
@@ -1125,7 +1125,7 @@ export default function DashboardPage() {
                                 {event.event_type}
                               </p>
                             </div>
-                            <div className="shrink-0 text-right text-[11px] text-slate-500">
+                            <div className="shrink-0 text-right text-[11px] text-slate-500" suppressHydrationWarning>
                               <p>{formatRelativeTimestamp(event.created_at)}</p>
                               <p>{formatTimestamp(event.created_at)}</p>
                             </div>

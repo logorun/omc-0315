@@ -121,7 +121,7 @@ export function MembersInvitesTable({
                 <div className="text-sm font-semibold text-slate-900">
                   {row.original.invite.invited_email}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-500" suppressHydrationWarning>
                   Invited {formatTimestamp(row.original.invite.created_at)}
                 </div>
               </div>

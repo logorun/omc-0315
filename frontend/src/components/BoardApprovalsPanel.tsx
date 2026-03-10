@@ -663,7 +663,9 @@ export function BoardApprovalsPanel({
                         {approval.confidence}% score
                       </span>
                       <Clock className="h-3.5 w-3.5 opacity-60" />
-                      <span>{formatTimestamp(approval.created_at)}</span>
+                      <span suppressHydrationWarning>
+                        {formatTimestamp(approval.created_at)}
+                      </span>
                     </div>
                   </button>
                 );
@@ -758,7 +760,7 @@ export function BoardApprovalsPanel({
                         <p className="text-lg font-semibold text-slate-900">
                           {humanizeAction(selectedApproval.action_type)}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-slate-500" suppressHydrationWarning>
                           Requested{" "}
                           {formatTimestamp(selectedApproval.created_at)}
                         </p>

@@ -267,10 +267,10 @@ export default function AgentDetailPage() {
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
                           Last seen
                         </p>
-                        <p className="mt-1 text-sm text-strong">
+                        <p className="mt-1 text-sm text-strong" suppressHydrationWarning>
                           {formatRelative(agent.last_seen_at)}
                         </p>
-                        <p className="text-xs text-quiet">
+                        <p className="text-xs text-quiet" suppressHydrationWarning>
                           {formatTimestamp(agent.last_seen_at)}
                         </p>
                       </div>
@@ -278,7 +278,7 @@ export default function AgentDetailPage() {
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
                           Updated
                         </p>
-                        <p className="mt-1 text-sm text-muted">
+                        <p className="mt-1 text-sm text-muted" suppressHydrationWarning>
                           {formatTimestamp(agent.updated_at)}
                         </p>
                       </div>
@@ -286,7 +286,7 @@ export default function AgentDetailPage() {
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
                           Created
                         </p>
-                        <p className="mt-1 text-sm text-muted">
+                        <p className="mt-1 text-sm text-muted" suppressHydrationWarning>
                           {formatTimestamp(agent.created_at)}
                         </p>
                       </div>
@@ -351,9 +351,9 @@ export default function AgentDetailPage() {
                               {event.event_type}
                             </p>
                           )}
-                          <p className="mt-1 text-xs text-quiet">
-                            {formatTimestamp(event.created_at)}
-                          </p>
+                            <p className="mt-1 text-xs text-quiet" suppressHydrationWarning>
+                              {formatTimestamp(event.created_at)}
+                            </p>
                         </div>
                       ))
                     )}
