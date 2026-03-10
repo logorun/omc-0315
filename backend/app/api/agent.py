@@ -588,6 +588,91 @@ async def list_tasks(
 
 
 @router.get(
+    "/boards/{board_id}/tasks/{task_id}",
+    response_model=TaskRead,
+    tags=AGENT_BOARD_TAGS,
+    openapi_extra=_agent_board_openapi_hints(
+        intent="agent_task_get",
+        when_to_use=[
+            "Agent needs to read a specific task by id.",
+            "Verifying task state before taking action.",
+        ],
+        routing_examples=[
+            {
+                "input": {
+                    "intent": "fetch single task details",
+                    "required_privilege": "any_agent",
+                },
+                "decision": "agent_task_get",
+            }
+        ],
+    ),
+)
+async def get_task(
+    task: Task = TASK_DEP,
+    board: Board = BOARD_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> TaskRead:
+    """Get a single task by id.
+
+    Use this to inspect task details before updates or status changes.
+    """
+    _guard_task_access(agent_ctx, task)
+    return await tasks_api._task_read_response(
+        session,
+        task=task,
+        board_id=board.id,
+    )
+
+
+@router.get(
+    "/boards/{board_id}/agents",
+    response_model=list[AgentRead],
+    tags=AGENT_BOARD_TAGS,
+    openapi_extra=_agent_board_openapi_hints(
+        intent="agent_board_agents_list",
+        when_to_use=[
+            "List all agents assigned to a board.",
+            "Discover available workers for task delegation.",
+        ],
+        routing_examples=[
+            {
+                "input": {
+                    "intent": "list board agents for coordination",
+                    "required_privilege": "any_agent",
+                },
+                "decision": "agent_board_agents_list",
+            }
+        ],
+    ),
+)
+async def list_board_agents(
+    board: Board = BOARD_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> list[AgentRead]:
+    """List all agents on a board.
+
+    Useful for lead delegation and workload balancing.
+    """
+    _guard_board_access(agent_ctx, board)
+    agents = list(
+        await session.exec(
+            select(Agent)
+            .where(Agent.board_id == board.id)
+            .order_by(col(Agent.created_at).desc())
+        )
+    )
+    return [
+        AgentLifecycleService.to_agent_read(
+            AgentLifecycleService.with_computed_status(agent),
+        )
+        for agent in agents
+    ]
+
+
+@router.get(
     "/boards/{board_id}/tags",
     response_model=list[TagRef],
     tags=AGENT_BOARD_TAGS,
