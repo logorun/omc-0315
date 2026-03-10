@@ -34,7 +34,7 @@ class BoardBase(SQLModel):
     comment_required_for_review: bool = False
     block_status_changes_with_pending_approval: bool = False
     only_lead_can_change_status: bool = False
-    max_agents: int = Field(default=1, ge=0)
+    max_agents: int = Field(default=5, ge=0)
 
 
 class BoardCreate(BoardBase):
