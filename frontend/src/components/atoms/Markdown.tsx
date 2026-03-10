@@ -22,7 +22,7 @@ type MarkdownCodeProps = HTMLAttributes<HTMLElement> & {
 };
 
 const MENTION_PATTERN =
-  /(^|[^A-Za-z0-9_])(@[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_])?)/g;
+  /(^|[^\w\u4e00-\u9fff_])(@[\w\u4e00-\u9fff](?:[\w\u4e00-\u9fff_.-]*[\w\u4e00-\u9fff])?)/g;
 
 const renderMentionsInText = (text: string, keyPrefix: string): ReactNode => {
   let lastIndex = 0;
