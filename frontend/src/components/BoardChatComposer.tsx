@@ -77,7 +77,7 @@ function BoardChatComposerImpl({
     if (!mentionTarget) return [];
     const query = mentionTarget.query;
     const startsWithMatches = mentionOptions.filter((option) =>
-      option.startsWith(query),
+      option.toLowerCase().startsWith(query),
     );
     return startsWithMatches.slice(0, MENTION_MAX_OPTIONS);
   }, [mentionOptions, mentionTarget]);
