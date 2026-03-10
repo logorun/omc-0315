@@ -185,6 +185,28 @@ class OpenClawProvisioningService(OpenClawDBService):
                 self.session.add(existing)
                 await self.session.commit()
                 await self.session.refresh(existing)
+            
+            # BUG FIX: If agent was never successfully provisioned (last_seen_at is None),
+            # execute provisioning now to ensure templates and wake message are sent
+            if existing.last_seen_at is None:
+                raw_token = mint_agent_token(existing)
+                agent = await AgentLifecycleOrchestrator(self.session).run_lifecycle(
+                    gateway=request.gateway,
+                    agent_id=existing.id,
+                    board=board,
+                    user=request.user,
+                    action=config_options.action,
+                    auth_token=raw_token,
+                    force_bootstrap=False,
+                    reset_session=False,
+                    wake=True,
+                    deliver_wakeup=True,
+                    wakeup_verb=None,
+                    clear_confirm_token=False,
+                    raise_gateway_errors=True,
+                )
+                return agent, False
+            
             return existing, False
 
         merged_identity_profile: dict[str, Any] = {
