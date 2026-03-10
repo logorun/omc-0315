@@ -30,7 +30,7 @@ const normalizeMentionHandle = (raw: string): string | null => {
   if (!/^[\w\u4e00-\u9fff]/.test(token)) return null;
   const normalized = token.replace(/^[._-]+|[._-]+$/g, "");
   if (!normalized) return null;
-  return normalized.slice(0, 32).toLowerCase();
+  return normalized.slice(0, 32);
 };
 
 const findMentionTarget = (
