@@ -214,7 +214,7 @@ export function AgentsTable({
         label: "Retry",
         onClick: onRetry,
         className: (agent) =>
-          RETRYABLE_FAILURE_STATUSES.has(agent.status)
+          agent.status && RETRYABLE_FAILURE_STATUSES.has(agent.status)
             ? "text-amber-600 hover:text-amber-700"
             : "text-slate-300 cursor-not-allowed",
       });
