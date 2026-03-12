@@ -80,8 +80,7 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
             return
 
         if agent.wake_attempts >= MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN:
-            agent.status = "offline"
-            # Bug 2.5 Fix: Clear provision fields to prevent stuck state
+            agent.status = "provision_timeout"
             agent.provision_action = None
             agent.provision_requested_at = None
             agent.checkin_deadline_at = None
@@ -103,8 +102,7 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
 
         gateway = await Gateway.objects.by_id(agent.gateway_id).first(session)
         if gateway is None:
-            # Bug 2.6 Fix: Mark agent offline when gateway is deleted
-            agent.status = "offline"
+            agent.status = "provision_failed"
             agent.provision_action = None
             agent.provision_requested_at = None
             agent.checkin_deadline_at = None
@@ -121,8 +119,7 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
         if agent.board_id is not None:
             board = await Board.objects.by_id(agent.board_id).first(session)
             if board is None:
-                # Bug 2.6 Fix: Mark agent offline when board is deleted
-                agent.status = "offline"
+                agent.status = "provision_failed"
                 agent.provision_action = None
                 agent.provision_requested_at = None
                 agent.checkin_deadline_at = None

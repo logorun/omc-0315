@@ -53,6 +53,8 @@ from app.services.openclaw.constants import (
 )
 from app.services.openclaw.db_agent_state import (
     mint_agent_token,
+    RETRYABLE_FAILURE_STATUSES,
+    TRANSIENT_STATUSES,
 )
 from app.services.openclaw.db_service import OpenClawDBService
 from app.services.openclaw.gateway_resolver import (
@@ -186,9 +188,16 @@ class OpenClawProvisioningService(OpenClawDBService):
                 await self.session.commit()
                 await self.session.refresh(existing)
             
-            # BUG FIX: If agent was never successfully provisioned (last_seen_at is None),
-            # execute provisioning now to ensure templates and wake message are sent
-            if existing.last_seen_at is None:
+            # BUG FIX (Issue #6): If agent was never successfully provisioned, execute provisioning now.
+            # This catches both:
+            # 1. Agent record created but provisioning never completed (provision_action is None)
+            # 2. Agent was provisioned but never connected (provision_action is not None, last_seen_at is None)
+            never_provisioned = (
+                existing.provision_action is None
+                or existing.last_seen_at is None
+            )
+
+            if never_provisioned:
                 raw_token = mint_agent_token(existing)
                 agent = await AgentLifecycleOrchestrator(self.session).run_lifecycle(
                     gateway=request.gateway,
@@ -890,18 +899,30 @@ class AgentLifecycleService(OpenClawDBService):
     def with_computed_status(cls, agent: Agent) -> Agent:
         now = utcnow()
         PROVISION_TIMEOUT = timedelta(minutes=5)
-        if agent.status in {"deleting", "updating"}:
+        
+        if agent.status in TRANSIENT_STATUSES:
             if agent.provision_requested_at is not None:
                 if now - agent.provision_requested_at > PROVISION_TIMEOUT:
-                    agent.status = "offline"
+                    if agent.status == "provisioning":
+                        agent.status = "provision_timeout"
+                    elif agent.status == "updating":
+                        agent.status = "update_failed"
+                    elif agent.status == "deleting":
+                        agent.status = "delete_failed"
                     agent.provision_action = None
                     agent.provision_requested_at = None
-                    agent.last_provision_error = "Provisioning timed out after 5 minutes"
+                    if agent.last_provision_error is None:
+                        agent.last_provision_error = "Operation timed out after 5 minutes"
             return agent
+            
+        if agent.status in RETRYABLE_FAILURE_STATUSES:
+            return agent
+            
         if agent.last_seen_at is None:
             if agent.created_at is not None and now - agent.created_at > PROVISION_TIMEOUT:
-                agent.status = "offline"
-                agent.last_provision_error = "Agent never connected after 5 minutes"
+                agent.status = "provision_timeout"
+                if agent.last_provision_error is None:
+                    agent.last_provision_error = "Agent never connected after 5 minutes"
             else:
                 agent.status = "provisioning"
         elif now - agent.last_seen_at > OFFLINE_AFTER:

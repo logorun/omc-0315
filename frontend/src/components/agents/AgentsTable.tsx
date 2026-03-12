@@ -12,13 +12,21 @@ import {
 } from "@tanstack/react-table";
 
 import { type AgentRead, type BoardRead } from "@/api/generated/model";
-import { DataTable } from "@/components/tables/DataTable";
+import { DataTable, type DataTableRowAction } from "@/components/tables/DataTable";
 import {
   dateCell,
   linkifyCell,
   pillCell,
 } from "@/components/tables/cell-formatters";
 import { truncateText as truncate } from "@/lib/formatters";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+const RETRYABLE_FAILURE_STATUSES = new Set([
+  "provision_failed",
+  "provision_timeout",
+  "update_failed",
+  "delete_failed",
+]);
 
 type AgentsTableEmptyState = {
   title: string;
@@ -42,6 +50,7 @@ type AgentsTableProps = {
   emptyMessage?: string;
   emptyState?: AgentsTableEmptyState;
   onDelete?: (agent: AgentRead) => void;
+  onRetry?: (agent: AgentRead) => void;
 };
 
 const DEFAULT_EMPTY_ICON = (
@@ -61,6 +70,29 @@ const DEFAULT_EMPTY_ICON = (
   </svg>
 );
 
+function StatusWithTooltip({ status, error }: { status: string; error?: string | null }) {
+  if (!error) {
+    return pillCell(status);
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      {pillCell(status)}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-help text-slate-400 hover:text-slate-600">
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="max-w-xs">{error}</p>
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 export function AgentsTable({
   agents,
   boards = [],
@@ -75,6 +107,7 @@ export function AgentsTable({
   emptyMessage = "No agents found.",
   emptyState,
   onDelete,
+  onRetry,
 }: AgentsTableProps) {
   const [internalSorting, setInternalSorting] = useState<SortingState>([
     { id: "name", desc: false },
@@ -114,7 +147,12 @@ export function AgentsTable({
       {
         accessorKey: "status",
         header: "Status",
-        cell: ({ row }) => pillCell(row.original.status),
+        cell: ({ row }) => (
+          <StatusWithTooltip
+            status={row.original.status}
+            error={row.original.last_provision_error}
+          />
+        ),
       },
       {
         accessorKey: "openclaw_session_id",
@@ -157,6 +195,41 @@ export function AgentsTable({
     return baseColumns;
   }, [boardNameById]);
 
+  const rowActions = useMemo((): DataTableRowAction<AgentRead>[] | undefined => {
+    if (!showActions) return undefined;
+
+    const actions: DataTableRowAction<AgentRead>[] = [
+      {
+        key: "edit",
+        label: "Edit",
+        href: (agent) => `/agents/${agent.id}/edit`,
+      },
+    ];
+
+    if (onRetry) {
+      actions.push({
+        key: "retry",
+        label: "Retry",
+        onClick: onRetry,
+        className: (agent) =>
+          RETRYABLE_FAILURE_STATUSES.has(agent.status)
+            ? "text-amber-600 hover:text-amber-700"
+            : "text-slate-300 cursor-not-allowed",
+      });
+    }
+
+    if (onDelete) {
+      actions.push({
+        key: "delete",
+        label: "Delete",
+        onClick: onDelete,
+        className: "text-red-600 hover:text-red-700",
+      });
+    }
+
+    return actions;
+  }, [showActions, onRetry, onDelete]);
+
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: sortedAgents,
@@ -179,10 +252,9 @@ export function AgentsTable({
       emptyMessage={emptyMessage}
       stickyHeader={stickyHeader}
       rowActions={
-        showActions
+        rowActions
           ? {
-              getEditHref: (agent) => `/agents/${agent.id}/edit`,
-              onDelete,
+              actions: rowActions,
             }
           : undefined
       }

@@ -9,6 +9,34 @@ from app.core.time import utcnow
 from app.models.agents import Agent
 from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG
 
+# Issue #6: Extended status types to distinguish failure modes
+AgentStatus = Literal[
+    "provisioning",       # In progress
+    "provision_failed",   # Gateway creation failed
+    "provision_timeout",  # Provisioning took too long
+    "online",             # Running normally
+    "offline",            # Was online, now disconnected
+    "updating",           # In progress
+    "update_failed",      # Update failed
+    "deleting",
+    "delete_failed",      # Delete failed
+]
+
+# Statuses that indicate a retryable failure
+RETRYABLE_FAILURE_STATUSES: set[str] = {
+    "provision_failed",
+    "provision_timeout",
+    "update_failed",
+    "delete_failed",
+}
+
+# Statuses that indicate agent is in a transient state
+TRANSIENT_STATUSES: set[str] = {
+    "provisioning",
+    "updating",
+    "deleting",
+}
+
 
 def ensure_heartbeat_config(agent: Agent) -> None:
     """Ensure an agent has a heartbeat_config dict populated."""
@@ -44,10 +72,10 @@ def mark_provision_requested(
 def mark_provision_complete(
     agent: Agent,
     *,
-    status: Literal["online", "offline", "provisioning", "updating", "deleting"] = "online",
+    status: AgentStatus = "online",
     clear_confirm_token: bool = False,
 ) -> None:
-    """Clear provisioning fields after a successful gateway lifecycle run."""
+    """Clear provisioning fields after a lifecycle run (success or failure)."""
 
     if clear_confirm_token:
         agent.provision_confirm_token_hash = None

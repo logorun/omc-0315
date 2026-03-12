@@ -21,6 +21,7 @@ from app.services.openclaw.db_agent_state import (
     mark_provision_complete,
     mark_provision_requested,
     mint_agent_token,
+    AgentStatus,
 )
 from app.services.openclaw.db_service import OpenClawDBService
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
@@ -35,6 +36,16 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
     from app.models.users import User
+
+
+def _get_failed_status(action: str) -> AgentStatus:
+    if action == "provision":
+        return "provision_failed"
+    if action == "update":
+        return "update_failed"
+    if action == "delete":
+        return "delete_failed"
+    return "offline"
 
 
 class AgentLifecycleOrchestrator(OpenClawDBService):
@@ -120,8 +131,8 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 wakeup_verb=wakeup_verb,
             )
         except OpenClawGatewayError as exc:
-            # Bug 2 Fix: Mark provision complete to prevent stuck state
-            mark_provision_complete(locked, status="offline")
+            failed_status = _get_failed_status(action)
+            mark_provision_complete(locked, status=failed_status)
             locked.last_provision_error = str(exc)
             locked.updated_at = utcnow()
             self.session.add(locked)
@@ -134,8 +145,8 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 ) from exc
             return locked
         except (OSError, RuntimeError, ValueError) as exc:
-            # Bug 2 Fix: Mark provision complete to prevent stuck state
-            mark_provision_complete(locked, status="offline")
+            failed_status = _get_failed_status(action)
+            mark_provision_complete(locked, status=failed_status)
             locked.last_provision_error = str(exc)
             locked.updated_at = utcnow()
             self.session.add(locked)
