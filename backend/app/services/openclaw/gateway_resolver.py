@@ -11,6 +11,7 @@ Goals:
 
 from __future__ import annotations
 
+import platform
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
@@ -23,6 +24,29 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
 
+# Docker host networking constants
+DOCKER_HOST_INTERNAL = "host.docker.internal"
+DOCKER_BRIDGE_LINUX = "172.17.0.1"
+
+
+def _resolve_docker_host_url(url: str) -> str:
+    """Resolve host.docker.internal to a working address on Linux.
+    
+    On Docker Desktop (macOS/Windows), host.docker.internal works out of the box.
+    On Linux, it's not available and needs to be replaced with the Docker bridge IP.
+    """
+    if DOCKER_HOST_INTERNAL not in url:
+        return url
+    
+    # Only apply this fix on Linux systems
+    if platform.system().lower() != "linux":
+        return url
+    
+    # Replace host.docker.internal with Docker bridge IP
+    resolved_url = url.replace(DOCKER_HOST_INTERNAL, DOCKER_BRIDGE_LINUX)
+    return resolved_url
+
+
 def gateway_client_config(gateway: Gateway) -> GatewayClientConfig:
     """Build a gateway RPC config from a Gateway model, requiring a URL."""
     url = (gateway.url or "").strip()
@@ -31,6 +55,8 @@ def gateway_client_config(gateway: Gateway) -> GatewayClientConfig:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Gateway url is required",
         )
+    # Resolve host.docker.internal for Linux Docker compatibility
+    url = _resolve_docker_host_url(url)
     token = (gateway.token or "").strip() or None
     return GatewayClientConfig(
         url=url,
@@ -47,6 +73,7 @@ def optional_gateway_client_config(gateway: Gateway | None) -> GatewayClientConf
     url = (gateway.url or "").strip()
     if not url:
         return None
+    url = _resolve_docker_host_url(url)
     token = (gateway.token or "").strip() or None
     return GatewayClientConfig(
         url=url,
