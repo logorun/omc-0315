@@ -99,6 +99,11 @@ async def _touch_agent_presence(
     agent.updated_at = now
     if agent.status not in {"updating", "deleting"}:
         agent.status = "online"
+    # Clear stale provisioning error state when agent recovers via API calls.
+    # This mirrors the behavior in commit_heartbeat (provisioning_db.py).
+    agent.last_provision_error = None
+    agent.wake_attempts = 0
+    agent.checkin_deadline_at = None
     session.add(agent)
 
     # For safe HTTP methods, endpoints typically do not commit. Persist the touch
