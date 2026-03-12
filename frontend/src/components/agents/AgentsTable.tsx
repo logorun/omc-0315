@@ -151,7 +151,8 @@ export function AgentsTable({
         cell: ({ row }) => (
           <StatusWithTooltip
             status={row.original.status}
-            error={row.original.last_provision_error}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            error={(row.original as any).last_provision_error}
           />
         ),
       },
