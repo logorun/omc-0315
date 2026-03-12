@@ -70,13 +70,14 @@ const DEFAULT_EMPTY_ICON = (
   </svg>
 );
 
-function StatusWithTooltip({ status, error }: { status: string; error?: string | null }) {
+function StatusWithTooltip({ status, error }: { status: string | undefined; error?: string | null }) {
+  const safeStatus = status ?? "unknown";
   if (!error) {
-    return pillCell(status);
+    return pillCell(safeStatus);
   }
   return (
     <div className="flex items-center gap-1.5">
-      {pillCell(status)}
+      {pillCell(safeStatus)}
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="cursor-help text-slate-400 hover:text-slate-600">
