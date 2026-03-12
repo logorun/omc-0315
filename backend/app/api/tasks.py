@@ -2125,8 +2125,9 @@ async def _lead_apply_status(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "Lead status gate failed: board leads can only change status when the current "
-                f"task status is `review` (current: `{update.task.status}`)."
+                "Board leads coordinate work, not execute it. "
+                f"Tasks must be in `review` status for lead action (current: `{update.task.status}`). "
+                "Assign this task to a worker agent, or create one if none exist on this board."
             ),
         )
     target_status = _required_status_value(update.updates["status"])
@@ -2134,8 +2135,8 @@ async def _lead_apply_status(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "Lead status target gate failed: review tasks can only move to `done` or "
-                f"`inbox` (requested: `{target_status}`)."
+                f"Review tasks can only move to `done` or `inbox` (requested: `{target_status}`). "
+                "Use `done` to approve, or `inbox` to return for rework."
             ),
         )
     if target_status == "inbox":
