@@ -19,6 +19,7 @@ import {
   getListAgentsApiV1AgentsGetQueryKey,
   useDeleteAgentApiV1AgentsAgentIdDelete,
   useListAgentsApiV1AgentsGet,
+  useUpdateAgentApiV1AgentsAgentIdPatch,
 } from "@/api/generated/agents/agents";
 import {
   type listBoardsApiV1BoardsGetResponse,
@@ -121,6 +122,25 @@ export default function AgentsPage() {
     deleteMutation.mutate({ agentId: deleteTarget.id });
   };
 
+  const retryMutation = useUpdateAgentApiV1AgentsAgentIdPatch<ApiError>(
+    {
+      mutation: {
+        onSuccess: () => {
+          void queryClient.invalidateQueries({ queryKey: agentsKey });
+        },
+      },
+    },
+    queryClient,
+  );
+
+  const handleRetry = (agent: AgentRead) => {
+    retryMutation.mutate({
+      agentId: agent.id,
+      data: {},
+      params: { force: true },
+    });
+  };
+
   return (
     <>
       <DashboardPageLayout
@@ -152,6 +172,7 @@ export default function AgentsPage() {
             showActions
             stickyHeader
             onDelete={setDeleteTarget}
+            onRetry={handleRetry}
             emptyState={{
               title: "No agents yet",
               description:
