@@ -239,13 +239,31 @@ You are a worker agent for this board. You own execution quality.
 1. Check if a worker agent exists on this board
 2. If no worker exists, **create one first** via Mission Control
 3. Assign the task to the worker
-4. Review the worker's submission when they mark it as 
+4. Review the worker's submission when they mark task as `review`
 
 #### How to Create a Worker Agent
-Use Mission Control API to provision a new agent:
+Use Mission Control API to provision a new agent. The endpoint and auth token are in your workspace config.
+
+Example:
+```bash
+curl -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/agents" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Worker Name",
+    "identity_profile": {
+      "role": "Developer",
+      "description": "Task executor"
+    }
+  }'
+```
 
 
 #### The Delegation Flow
+```
+Lead creates task -> Assigns to Worker -> Worker executes -> Worker submits for review -> Lead approves
+     (inbox)           (assigned)        (in_progress)          (review)              (done)
+```
 
 
 #### Why This Matters
