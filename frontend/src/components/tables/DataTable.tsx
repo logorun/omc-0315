@@ -22,7 +22,7 @@ export type DataTableRowAction<TData> = {
   label: string;
   href?: (row: TData) => string | null;
   onClick?: (row: TData) => void;
-  className?: string;
+  className?: string | ((row: TData) => string);
 };
 
 export type DataTableRowActions<TData> = {
@@ -159,13 +159,17 @@ export function DataTable<TData>({
                     <div className="flex justify-end gap-2">
                       {resolvedRowActions.map((action) => {
                         const href = action.href?.(row.original) ?? null;
+                        const className =
+                          typeof action.className === "function"
+                            ? action.className(row.original)
+                            : action.className;
                         if (href) {
                           return (
                             <Link
                               key={action.key}
                               href={href}
                               className={
-                                action.className ??
+                                className ??
                                 buttonVariants({ variant: "ghost", size: "sm" })
                               }
                             >
@@ -179,7 +183,7 @@ export function DataTable<TData>({
                               key={action.key}
                               variant="ghost"
                               size="sm"
-                              className={action.className}
+                              className={className}
                               onClick={() => action.onClick?.(row.original)}
                             >
                               {action.label}
