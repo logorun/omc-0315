@@ -7,36 +7,65 @@
 - **Gateway URL**: wss://gw-79-ec.imlogo.net:443
 - **Gateway Token**: eed33f14de30bffdf188302021d697e9835cf46ec0d23a76
 
-## Known Issue: Intermittent SIGTERM Signals
+---
 
-### Symptoms
-- Gateway process receives SIGTERM signals erratically (every 10-60 seconds)
-- Caddy returns HTTP 502 when gateway is down
-- Agent status shows `provision_failed` or `update_failed`
+## 🔴 已解决: SIGTERM 信号导致 Gateway 重启
 
-### Investigation Findings
-1. **NOT caused by**: systemd, cron jobs, monitoring services, OOM killer
-2. **Systemd NRestarts**: Shows 0 (systemd is NOT restarting the service)
-3. **Memory**: Plenty available (7.8GB total, 7GB free)
-4. **Process**: Runs normally between SIGTERM events
-5. **VM Type**: QEMU virtual machine
+### 问题症状
+- Gateway 进程每 6-60 秒收到 SIGTERM 信号并重启
+- Caddy 返回 HTTP 502 错误
+- Agent 状态显示 `provision_failed` 或 `provision_timeout`
 
-### Partial Workaround Applied
-1. Disabled `commands.restart` in `/root/.openclaw/openclaw.json`
-2. Changed systemd service `Restart=on-failure` (from `Restart=always`)
-3. Fixed invalid environment variable in systemd service file
+### 根本原因
+**QEMU Guest Agent** (`qemu-guest-agent.service`) 在发送 SIGTERM 信号
 
-## Manual Fix Steps
-
-### 1. Approve Device Pairing
+### 解决方案
 ```bash
-# On gateway server (.79)
-ssh ecs95033
+# 在 gateway 服务器 (.79) 上执行
+systemctl stop qemu-guest-agent
+systemctl disable qemu-guest-agent
+systemctl mask qemu-guest-agent
+```
 
-# Check pending devices
+### 验证修复
+```bash
+# 检查 gateway 运行时间
+ps -o etime= -p $(pgrep -f 'node.*gateway')
+
+# 检查端口监听
+netstat -tlnp | grep 18789
+
+# 检查 MC 连接
+curl -s "https://omc.imlogo.net/api/v1/gateways/status?gateway_url=wss://gw-79-ec.imlogo.net:443&gateway_token=TOKEN" -H "Authorization: Bearer AUTH_TOKEN" | jq '.'
+```
+
+---
+
+## 配置文件
+
+### Systemd Service (.79)
+**File**: `/root/.config/systemd/user/openclaw-gateway.service`
+- Restart: `on-failure`
+- SuccessExitStatus: `0 143`
+
+### OpenClaw Config (.79)
+**File**: `/root/.openclaw/openclaw.json`
+- `commands.restart`: `false` (已禁用内部重启)
+
+### Caddy Config (.79)
+**File**: `/etc/caddy/Caddyfile`
+- Reverse proxy to localhost:18789
+
+---
+
+## 设备配对
+
+### 手动配对步骤
+```bash
+# 检查待配对设备
 cat /root/.openclaw/devices/pending.json | jq '.'
 
-# Approve device
+# 批准设备
 pending=$(cat /root/.openclaw/devices/pending.json)
 device_id=$(echo $pending | jq -r '.[].deviceId')
 device=$(echo $pending | jq '.[]')
@@ -45,58 +74,60 @@ mv /tmp/paired.json /root/.openclaw/devices/paired.json
 echo '{}' > /root/.openclaw/devices/pending.json
 ```
 
-### 2. Update Agent Status in Database
-```bash
-# On MC server (.78)
-ssh ecs
+---
 
-# Set agent to online
+## Agent 状态管理
+
+### 手动更新 Agent 状态
+```bash
+# 在 MC 服务器 (.78) 上执行
 docker exec openclaw-mission-control-db-1 psql -U postgres -d mission_control -c \
   "UPDATE agents SET status = 'online', updated_at = NOW() WHERE id = '2dde96be-1294-445e-bb70-663f6914f4c9';"
-
-# Verify
-docker exec openclaw-mission-control-db-1 psql -U postgres -d mission_control -c \
-  "SELECT id, status FROM agents WHERE gateway_id = 'acd4001c-a911-4ec0-9f49-57d7f57a0fb7';"
 ```
 
-### 3. Check Gateway Connection
+---
+
+## 故障排除命令
+
 ```bash
-# Check from MC server
-curl -s -X GET "https://omc.imlogo.net/api/v1/gateways/status?gateway_url=wss://gw-79-ec.imlogo.net:443&gateway_token=eed33f14de30bffdf188302021d697e9835cf46ec0d23a76" \
-  -H "Authorization: Bearer mc-local-auth-token-216-116-160-78-mission-control-secure-token-2026" | jq '.'
-```
-
-## Configuration Files
-
-### Systemd Service (.79)
-**File**: `/root/.config/systemd/user/openclaw-gateway.service`
-- Restart: on-failure (not always)
-- SuccessExitStatus: 0 143 (SIGTERM = 143, considered success)
-
-### OpenClaw Config (.79)
-**File**: `/root/.openclaw/openclaw.json`
-- `commands.restart`: false
-
-### Caddy Config (.79)
-**File**: `/etc/caddy/Caddyfile`
-- Reverse proxy to localhost:18789
-
-## Recommended Next Steps
-1. **Investigate VM-level signals**: The SIGTERM source is likely from the hypervisor or VM infrastructure
-2. **Contact cloud provider**: Check if there are any VM-level health checks or watchdogs
-3. **Consider alternative deployment**: Run gateway on bare metal or different VM provider
-
-## Related Commands
-```bash
-# Check gateway logs
+# 检查 gateway 日志
 tail -f /tmp/openclaw/openclaw-2026-03-13.log | grep -a SIGTERM
 
-# Check systemd status
+# 检查 systemd 状态
 systemctl --user status openclaw-gateway
 
-# Restart gateway
+# 重启 gateway
 systemctl --user restart openclaw-gateway
 
-# Check listening ports
+# 检查监听端口
 netstat -tlnp | grep 18789
+
+# 检查 QEMU Guest Agent 状态
+systemctl status qemu-guest-agent
 ```
+
+---
+
+## 调查历史
+
+### 已排除的原因
+- ❌ Systemd 重启策略 (NRestarts=0)
+- ❌ Cron 作业
+- ❌ 监控服务 (monit, supervisor, pm2)
+- ❌ OOM Killer
+- ❌ 内核 watchdog
+- ❌ Avahi/mDNS 冲突
+- ❌ OpenClaw 内部重启机制
+
+### 确认的根本原因
+- ✅ **QEMU Guest Agent** - 发送 SIGTERM 信号
+  - QEMU Guest Agent 是云服务商用于 VM 管理的工具
+  - 它可能定期发送信号来检查或管理进程
+  - 禁用后 Gateway 稳定运行
+
+---
+
+## 相关链接
+- GitHub: https://github.com/logorun/openclaw-mission-control
+- MC Dashboard: https://omc.imlogo.net
+- Gateway URL: wss://gw-79-ec.imlogo.net:443
